@@ -108,7 +108,7 @@ function Index() {
       )}
 
       {stage === "done" && (
-        <section className="mx-auto grid max-w-6xl grid-cols-2 gap-6 px-6 pb-24 md:grid-cols-4">
+        <section className="mx-auto grid max-w-6xl grid-cols-1 gap-6 sm:grid-cols-2 px-6 pb-24 md:grid-cols-4">
           {yt && <p className="col-span-full text-center text-sm text-muted-foreground">To download clips, upload the video file — YouTube doesn't allow direct downloads.</p>}
           {clips.map((c, i) => <ClipCard key={`${file ?? yt}-${i}`} clip={c} file={file} yt={yt} style={style} duration={duration} />)}
           <button onClick={() => setClips([...clips, { start: 0, end: Math.min(15, duration), title: "My new clip", captions: ["Add your caption"] }])}
@@ -211,7 +211,7 @@ function ClipCard({ clip: initial, file, yt, style, duration }: { clip: Clip; fi
           </div>
         )}
         <div className="flex gap-2">
-          <button onClick={() => setEditing(!editing)} className="flex-1 rounded-lg border px-2 py-1.5 text-sm">{editing ? "Done" : "Trim & edit"}</button>
+          <button onClick={() => setEditing(!editing)} className="flex-1 whitespace-nowrap rounded-lg border px-2 py-1.5 text-sm">{editing ? "Done" : "Trim & edit"}</button>
           <button onClick={download} disabled={!file || busy !== null} title={file ? "" : "Upload a video file to download clips"}
             className="flex-1 rounded-lg bg-primary px-2 py-1.5 text-sm font-bold text-primary-foreground disabled:opacity-40">
             {busy !== null ? `${Math.round(busy)}%` : "Download"}</button>
