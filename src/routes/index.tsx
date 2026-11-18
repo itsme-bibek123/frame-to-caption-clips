@@ -32,7 +32,7 @@ function makeClips(duration: number, n = 4): Clip[] {
     return {
       start: Math.min(start, Math.max(0, duration - len)),
       end: Math.min(duration, start + len),
-      title: HOOKS[i % HOOKS.length],
+      title: HOOKS[i % HOOKS.length] ?? "Clip",
       captions: [...LINES].sort(() => Math.random() - 0.5),
     };
   });
@@ -146,7 +146,7 @@ async function renderClip(src: string, clip: Clip, style: string, onProgress: (p
     ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
     const w = W * ZOOM, h = (w * v.videoHeight) / v.videoWidth;
     ctx.drawImage(v, (W - w) / 2, (H - h) / 2, w, h);
-    const line = clip.captions[Math.floor(t / 1.5) % clip.captions.length].toUpperCase();
+    const line = (clip.captions[Math.floor(t / 1.5) % clip.captions.length] ?? "").toUpperCase();
     ctx.font = "900 54px 'Archivo Black', sans-serif"; ctx.textAlign = "center";
     const y = H - 260;
     if (style === "clean") { ctx.fillStyle = "rgba(0,0,0,.65)"; const m = ctx.measureText(line).width; ctx.fillRect(W / 2 - m / 2 - 16, y - 54, m + 32, 74); }
