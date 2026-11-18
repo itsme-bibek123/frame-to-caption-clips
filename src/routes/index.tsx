@@ -15,6 +15,7 @@ export const Route = createFileRoute("/")({
   component: Index,
 });
 
+export type Opts = { bg: string | null; zoom: number; capY: number; capSize: number; watermark: string };
 type Clip = { start: number; end: number; title: string; captions: string[] };
 
 const HOOKS = ["The moment everything changed", "Nobody talks about this", "Wait for it…", "The best advice I got", "This blew my mind"];
@@ -47,6 +48,7 @@ function Index() {
   const [clips, setClips] = useState<Clip[]>([]);
   const [duration, setDuration] = useState(600);
   const [style, setStyle] = useState<"bold" | "neon" | "clean">("bold");
+  const [opts, setOpts] = useState<Opts>({ bg: null, zoom: 1.35, capY: 18, capSize: 1.1, watermark: "" });
   const probe = useRef<HTMLVideoElement>(null);
 
   const run = (duration: number) => {
@@ -96,6 +98,32 @@ function Index() {
               className={`rounded-full border px-4 py-1 text-sm capitalize ${style === s ? "bg-primary text-primary-foreground" : ""}`}>{s} captions</button>
           ))}
         </div>
+
+        <div className="mx-auto mt-6 grid max-w-2xl gap-4 rounded-2xl border bg-card p-5 text-left text-sm sm:grid-cols-2">
+          <div className="sm:col-span-2 flex items-center gap-3">
+            <div className="h-16 w-10 shrink-0 overflow-hidden rounded-md border bg-muted">
+              {opts.bg && <img src={opts.bg} alt="Background" className="h-full w-full object-cover" />}
+            </div>
+            <label className="cursor-pointer rounded-lg border px-3 py-2 hover:border-primary">
+              {opts.bg ? "Change background image" : "Upload background image"}
+              <input type="file" accept="image/*" className="hidden"
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) setOpts({ ...opts, bg: URL.createObjectURL(f) }); }} />
+            </label>
+            {opts.bg && <button onClick={() => setOpts({ ...opts, bg: null })} className="text-muted-foreground hover:text-foreground">Remove</button>}
+          </div>
+          <label>Video size {Math.round(opts.zoom * 100)}%
+            <input type="range" min={0.8} max={2} step={0.05} value={opts.zoom} className="w-full accent-primary"
+              onChange={(e) => setOpts({ ...opts, zoom: +e.target.value })} /></label>
+          <label>Caption height {opts.capY}%
+            <input type="range" min={5} max={85} step={1} value={opts.capY} className="w-full accent-primary"
+              onChange={(e) => setOpts({ ...opts, capY: +e.target.value })} /></label>
+          <label>Caption size
+            <input type="range" min={0.7} max={2} step={0.05} value={opts.capSize} className="w-full accent-primary"
+              onChange={(e) => setOpts({ ...opts, capSize: +e.target.value })} /></label>
+          <label>Watermark / channel name
+            <input value={opts.watermark} placeholder="@yourchannel" onChange={(e) => setOpts({ ...opts, watermark: e.target.value })}
+              className="mt-1 w-full rounded-md bg-muted px-3 py-2 outline-none" /></label>
+        </div>
       </section>
 
       {stage === "work" && (
@@ -110,7 +138,7 @@ function Index() {
       {stage === "done" && (
         <section className="mx-auto grid max-w-6xl grid-cols-1 gap-6 sm:grid-cols-2 px-6 pb-24 md:grid-cols-4">
           {yt && <p className="col-span-full text-center text-sm text-muted-foreground">To download clips, upload the video file — YouTube doesn't allow direct downloads.</p>}
-          {clips.map((c, i) => <ClipCard key={`${file ?? yt}-${i}`} clip={c} file={file} yt={yt} style={style} duration={duration} />)}
+          {clips.map((c, i) => <ClipCard key={`${file ?? yt}-${i}`} clip={c} file={file} yt={yt} style={style} opts={opts} duration={duration} />)}
           <button onClick={() => setClips([...clips, { start: 0, end: Math.min(15, duration), title: "My new clip", captions: ["Add your caption"] }])}
             className="flex aspect-[9/16] items-center justify-center rounded-2xl border-2 border-dashed text-muted-foreground hover:border-primary hover:text-primary">+ Add clip</button>
         </section>
@@ -119,14 +147,15 @@ function Index() {
   );
 }
 
-const ZOOM = 1.35; // how much the 16:9 video is enlarged inside the 9:16 frame
 
-async function renderClip(src: string, clip: Clip, style: string, onProgress: (p: number) => void): Promise<Blob> {
+async function renderClip(src: string, clip: Clip, style: string, opts: Opts, onProgress: (p: number) => void): Promise<Blob> {
   const v = document.createElement("video");
   v.src = src; v.playsInline = true; v.crossOrigin = "anonymous";
   await new Promise((r) => (v.onloadeddata = r));
   v.currentTime = clip.start;
   await new Promise((r) => (v.onseeked = r));
+  let bg: HTMLImageElement | null = null;
+  if (opts.bg) { bg = new Image(); bg.src = opts.bg; await bg.decode(); }
   const W = 720, H = 1280;
   const c = document.createElement("canvas"); c.width = W; c.height = H;
   const ctx = c.getContext("2d")!;
@@ -144,12 +173,15 @@ async function renderClip(src: string, clip: Clip, style: string, onProgress: (p
     onProgress(Math.min(100, (t / len) * 100));
     if (t >= len || v.ended) { v.pause(); rec.stop(); return; }
     ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
-    const w = W * ZOOM, h = (w * v.videoHeight) / v.videoWidth;
+    if (bg) { const k = Math.max(W / bg.width, H / bg.height); ctx.drawImage(bg, (W - bg.width * k) / 2, (H - bg.height * k) / 2, bg.width * k, bg.height * k); }
+    const w = W * opts.zoom, h = (w * v.videoHeight) / v.videoWidth;
     ctx.drawImage(v, (W - w) / 2, (H - h) / 2, w, h);
     const line = (clip.captions[Math.floor(t / 1.5) % clip.captions.length] ?? "").toUpperCase();
-    ctx.font = "900 54px 'Archivo Black', sans-serif"; ctx.textAlign = "center";
-    const y = H - 260;
-    if (style === "clean") { ctx.fillStyle = "rgba(0,0,0,.65)"; const m = ctx.measureText(line).width; ctx.fillRect(W / 2 - m / 2 - 16, y - 54, m + 32, 74); }
+    const fs = Math.round(opts.capSize * 50);
+    ctx.font = `900 ${fs}px 'Archivo Black', sans-serif`; ctx.textAlign = "center";
+    if (opts.watermark) { ctx.fillStyle = "rgba(255,255,255,.8)"; ctx.font = "600 30px 'Archivo', sans-serif"; ctx.fillText(opts.watermark, W / 2, 80); ctx.font = `900 ${fs}px 'Archivo Black', sans-serif`; }
+    const y = H * (1 - opts.capY / 100);
+    if (style === "clean") { ctx.fillStyle = "rgba(0,0,0,.65)"; const m = ctx.measureText(line).width; ctx.fillRect(W / 2 - m / 2 - 16, y - fs, m + 32, fs * 1.4); }
     ctx.lineWidth = 10; ctx.strokeStyle = "#000";
     if (style !== "clean") ctx.strokeText(line, W / 2, y, W - 60);
     ctx.fillStyle = style === "neon" ? "#c6f24e" : "#fff";
@@ -160,7 +192,7 @@ async function renderClip(src: string, clip: Clip, style: string, onProgress: (p
   return done;
 }
 
-function ClipCard({ clip: initial, file, yt, style, duration }: { clip: Clip; file: string | null; yt: string | null; style: string; duration: number }) {
+function ClipCard({ clip: initial, file, yt, style, opts, duration }: { clip: Clip; file: string | null; yt: string | null; style: string; opts: Opts; duration: number }) {
   const v = useRef<HTMLVideoElement>(null);
   const [clip, setClip] = useState(initial);
   const [line, setLine] = useState(0);
@@ -173,7 +205,7 @@ function ClipCard({ clip: initial, file, yt, style, duration }: { clip: Clip; fi
     if (!file) return;
     setBusy(0);
     try {
-      const blob = await renderClip(file, clip, style, setBusy);
+      const blob = await renderClip(file, clip, style, opts, setBusy);
       const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
       a.download = `${clip.title.replace(/\W+/g, "-").toLowerCase()}.webm`; document.body.appendChild(a); a.click(); a.remove();
     } finally { setBusy(null); }
@@ -181,16 +213,18 @@ function ClipCard({ clip: initial, file, yt, style, duration }: { clip: Clip; fi
   return (
     <div className="overflow-hidden rounded-2xl border bg-card">
       <div className="relative aspect-[9/16] overflow-hidden bg-muted">
+        {opts.bg && <img src={opts.bg} alt="" className="absolute inset-0 h-full w-full object-cover" />}
+        {opts.watermark && <div className="absolute inset-x-0 top-4 z-10 text-center text-xs font-semibold text-foreground/80">{opts.watermark}</div>}
         {file ? (
           <video ref={v} src={file} muted loop autoPlay playsInline
             onTimeUpdate={(e) => { const el = e.currentTarget; if (el.currentTime >= clip.end || el.currentTime < clip.start - 1) el.currentTime = clip.start; }}
-            className="absolute left-1/2 top-1/2 w-[135%] max-w-none -translate-x-1/2 -translate-y-1/2" />
+            className="absolute left-1/2 top-1/2 max-w-none -translate-x-1/2 -translate-y-1/2" style={{ width: `${opts.zoom * 100}%` }} />
         ) : (
-          <iframe key={`${clip.start}-${clip.end}`} className="pointer-events-none absolute left-1/2 top-1/2 aspect-video w-[135%] -translate-x-1/2 -translate-y-1/2"
+          <iframe key={`${clip.start}-${clip.end}`} className="pointer-events-none absolute left-1/2 top-1/2 aspect-video -translate-x-1/2 -translate-y-1/2" style={{ width: `${opts.zoom * 100}%` }}
             src={`https://www.youtube.com/embed/${yt}?start=${Math.floor(clip.start)}&end=${Math.floor(clip.end)}&autoplay=1&mute=1&controls=0&loop=1&playlist=${yt}`}
             allow="autoplay" />
         )}
-        <div className={`caption caption-${style} absolute inset-x-3 bottom-16 text-center`}>{clip.captions[line]}</div>
+        <div className={`caption caption-${style} absolute inset-x-3 z-10 text-center`} style={{ bottom: `${opts.capY}%`, fontSize: `${opts.capSize}rem` }}>{clip.captions[line]}</div>
         {busy !== null && <div className="absolute inset-x-0 bottom-0 h-1.5 bg-primary transition-all" style={{ width: `${busy}%` }} />}
       </div>
       <div className="space-y-2 p-3">
